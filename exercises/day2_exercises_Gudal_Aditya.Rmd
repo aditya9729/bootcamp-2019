@@ -1,0 +1,155 @@
+---
+title: "R Day 2 exercises"
+author: "Your name here!"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r global_options, echo = FALSE, include = FALSE}
+knitr::opts_chunk$set(echo=T, eval=T,
+                      warning = FALSE, message = FALSE,
+                      cache = FALSE, tidy = FALSE)
+```
+
+<!-- BEFORE YOU START, REMEMBER TO RENAME THE .RMD FILE AND SAVE IT AS day2_exercises_LastNameFirstName.Rmd AND THEN REMOVE THIS INSTRUCTION -->
+
+## Load the data
+
+Read both California energy datasets. Make sure the `datetime` variable is in an appropriate data type (i.e. not character). 
+
+```{r 1}
+require(tidyverse)
+require(here)
+generation<-read_csv(here::here('data/ca_energy_generation.csv'))
+imports<-read_csv(here::here('data/ca_energy_imports.csv'))
+
+```
+
+
+## Merge and reshape the data
+
+Merge the two datasets and then melt the resulting dataframe/datatable to make it tidy.
+
+```{r 2}
+library(reshape2)
+merged_data<-merge(x=generation,y=imports,by='datetime')
+melted_data<-melt(merged_data,id.vars = "datetime",variable.name = "source",value.name = "usage")
+
+```
+
+
+## Creating new variables
+
+Create a series of new variables: 
+
+1. `day`, which is the year-month-day, without the hour. The `lubridate` function `as_date` will do this.
+2. `log_output`, which is the natural log of the output.
+3. **Challenge**: `per_output`, which is the percent of daily output represented by each observation. You will need to use `group_by` and to create a new variable with the total output for the day. (Make sure to use `ungroup()` after this!)
+
+Bonus: If you are using `dplyr`, try to do this all in one pipe!
+
+```{r 3}
+library(lubridate)
+melted_data <- melted_data %>%
+  mutate(day = as_date(datetime),
+         log_output = log(usage)) %>%
+  group_by(day) %>%
+  mutate(total_daily_output = sum(usage, na.rm = T)) %>% 
+  ungroup() %>% 
+  mutate(per_output = usage/total_daily_output)
+
+```
+
+
+## Summarizing and analyzing data
+
+1. Which source has the greatest mean output by hour? (Hint: Use the `dplyr` verb `arrange(desc(variable))` to order the data frame so that the largest value of `variable` is first. Don't use `desc` and it arranges in ascending order. The `data.table` function is `setorder`.) Which has the least?
+2. Which source has the greatest mean output by day? Which has the least? (Do not include zero values.)
+3. Which sources has the greatest variance in usage over the course of a dataset? Which has the least? (Do not include zero values.)
+
+```{r 4}
+##The greatest mean output by hour
+greatest_mean_output_byhour<-melted_data%>%
+    select(datetime,source,usage)%>%
+    filter(usage!=0)%>%
+    group_by(hour(datetime),source)%>%
+    summarize(mean_output=mean(usage,na.rm=T))%>%
+    arrange(desc(mean_output))
+
+##The least mean output by hour
+least_mean_output_byhour<-melted_data%>%
+    select(datetime,source,usage)%>%
+    filter(usage!=0)%>%
+    group_by(hour(datetime),source)%>%
+    summarize(mean_output=mean(usage,na.rm=T))%>%
+    arrange(mean_output)
+
+##The greatest mean output by day
+greatest_mean_output_day<-melted_data%>%
+    select(datetime,source,usage)%>%
+    filter(usage!=0)%>%
+    group_by(day(datetime),source)%>%
+    summarize(mean_output=mean(usage,na.rm=T))%>%
+    arrange(desc(mean_output))
+
+##The least mean output by day
+least_mean_output_day<-melted_data%>%
+    select(datetime,source,usage)%>%
+    filter(usage!=0)%>%
+    group_by(day(datetime),source)%>%
+    summarize(mean_output=mean(usage,na.rm=T))%>%
+    arrange(mean_output)
+
+##The greatest variance
+greatest_variance<-melted_data%>%
+    select(datetime,source,usage)%>%
+    filter(usage!=0)%>%
+    group_by(source)%>%
+    summarize(var_output=var(usage,na.rm=T))%>%
+    arrange(desc(var_output))
+
+##The least mean output by day
+least_variance<-melted_data%>%
+    select(datetime,source,usage)%>%
+    filter(usage!=0)%>%
+    group_by(source)%>%
+    summarize(var_output=var(usage,na.rm=T))%>%
+    arrange(var_output)
+
+```
+
+
+## Analyzing renewable versus non-renewable energy sources
+
+The dataset `regroup.csv` has information about which sources are considered renewable by the state of California. Use this dataset, along with yourdata manipulation skills, to explore the use of renewable and non-renewable sources. Annotate what your descisions for the analysis.
+
+Hint: Use your merge skills to merge the CA energy data with the `regroup` data. Which variable should you join by?
+
+```{r 5}
+regroup<-read_csv(here::here('data/ca_energy_regroup.csv'))
+final_data<-merge(x=melted_data,y=regroup,by.x='source',by.y='type')
+
+renewable<-final_data%>%
+    select(c(group,source,datetime,usage))%>%
+    filter(group=='renewable')%>%
+    group_by(source)%>%
+    summarize(total_usage_renewable=sum(usage,na.rm=T),mean_usage_renewable=mean(usage,na.rm=T))%>%
+    arrange(desc(total_usage_renewable),desc(mean_usage_renewable))
+
+non_renewable<-final_data%>%
+    select(c(group,source,datetime,usage))%>%
+    filter(group!='renewable')%>%
+    group_by(source)%>%
+    summarize(total_usage=sum(usage,na.rm=T),mean_usage=mean(usage,na.rm=T))%>%
+    arrange(desc(total_usage),desc(mean_usage))
+
+groups_ren_non_ren_by_day<-final_data%>%
+    select(c(group,source,datetime,usage))%>%
+    group_by(day(datetime),group,source)%>%
+    summarize(total_usage=sum(usage,na.rm=T),mean_usage=mean(usage,na.rm=T),variance_usage=var(usage,na.rm = T))%>%
+    arrange(desc(total_usage),desc(mean_usage))
+    
+
+
+```
+
